@@ -6,6 +6,14 @@ A simple tool that runs in local and compares any two given website URLs that yo
 
 You will need `uv` to run. Checkout the code and do `uv sync` to install all dependencies.
 
+## Run
+
+To run the application:
+
+```sh
+uv run python app.py
+```
+
 ## Comparison
 
 All comparisons are returned in two columns. There are three main comparisons listed in tabs. 

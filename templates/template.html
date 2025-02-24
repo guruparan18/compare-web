@@ -83,7 +83,7 @@
         flex: 1;
         padding: 0;
         background: #fff;
-        overflow-x: auto;
+        overflow-x: hidden;
       }
       
       .text-column + .text-column {
@@ -104,7 +104,9 @@
         margin: 0;
         min-height: 20px;
         line-height: 20px;
-        white-space: pre;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
       }
       
       .text-line:hover {
@@ -120,6 +122,10 @@
       }
       
       .modified {
+        /* Remove the background-color from here */
+      }
+      
+      .diff-highlight {
         background-color: #ffeef0;
         color: #b31d28;
       }
@@ -282,9 +288,23 @@
         <div class="text-comparison">
           <div class="text-column">
             <div class="column-header">{{ url1 }}</div>
-            {% for type, line in text_comparison %}
-              {% if type in ['both', 'left'] %}
-                <div class="text-line {% if type == 'left' %}left-only{% endif %}">{{ line if line else ' ' }}</div>
+            {% for item in text_comparison %}
+              {% if item[0] == 'both' %}
+                <div class="text-line">{{ item[1] }}</div>
+              {% elif item[0] == 'left' %}
+                <div class="text-line left-only">{{ item[1] }}</div>
+              {% elif item[0] == 'modified' %}
+                <div class="text-line left-only modified">
+                  {%- set line = item[1] -%}
+                  {%- set changes = item[3] -%}
+                  {%- set last_pos = 0 -%}
+                  {%- for start, end in changes -%}
+                    {{- line[last_pos:start] -}}
+                    <span class="diff-highlight">{{- line[start:end] -}}</span>
+                    {%- set last_pos = end -%}
+                  {%- endfor -%}
+                  {{- line[last_pos:] -}}
+                </div>
               {% else %}
                 <div class="text-line"> </div>
               {% endif %}
@@ -292,9 +312,23 @@
           </div>
           <div class="text-column">
             <div class="column-header">{{ url2 }}</div>
-            {% for type, line in text_comparison %}
-              {% if type in ['both', 'right'] %}
-                <div class="text-line {% if type == 'right' %}right-only{% endif %}">{{ line if line else ' ' }}</div>
+            {% for item in text_comparison %}
+              {% if item[0] == 'both' %}
+                <div class="text-line">{{ item[2] if item[2] else item[1] }}</div>
+              {% elif item[0] == 'right' %}
+                <div class="text-line right-only">{{ item[2] }}</div>
+              {% elif item[0] == 'modified' %}
+                <div class="text-line right-only modified">
+                  {%- set line = item[2] -%}
+                  {%- set changes = item[4] -%}
+                  {%- set last_pos = 0 -%}
+                  {%- for start, end in changes -%}
+                    {{- line[last_pos:start] -}}
+                    <span class="diff-highlight">{{- line[start:end] -}}</span>
+                    {%- set last_pos = end -%}
+                  {%- endfor -%}
+                  {{- line[last_pos:] -}}
+                </div>
               {% else %}
                 <div class="text-line"> </div>
               {% endif %}

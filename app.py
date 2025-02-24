@@ -152,21 +152,30 @@ def compare_text(text1, text2):
         if tag == 'equal':
             # Text is the same in both versions
             for line in text1[i1:i2]:
-                comparison.append(('both', line))
+                comparison.append(('both', line, None))
+        elif tag == 'replace':
+            # Text is modified - find character-level differences
+            for line1, line2 in zip(text1[i1:i2], text2[j1:j2]):
+                s = difflib.SequenceMatcher(None, line1, line2)
+                left_changes = []
+                right_changes = []
+                last_left = 0
+                last_right = 0
+                
+                for subtag, left_start, left_end, right_start, right_end in s.get_opcodes():
+                    if subtag != 'equal':
+                        left_changes.append((left_start, left_end))
+                        right_changes.append((right_start, right_end))
+                
+                comparison.append(('modified', line1, line2, left_changes, right_changes))
         elif tag == 'delete':
             # Text only in first sequence
             for line in text1[i1:i2]:
-                comparison.append(('left', line))
+                comparison.append(('left', line, None))
         elif tag == 'insert':
             # Text only in second sequence
             for line in text2[j1:j2]:
-                comparison.append(('right', line))
-        elif tag == 'replace':
-            # Text is modified
-            for line in text1[i1:i2]:
-                comparison.append(('left', line))
-            for line in text2[j1:j2]:
-                comparison.append(('right', line))
+                comparison.append(('right', None, line))
     
     return comparison
 

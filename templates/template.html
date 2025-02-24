@@ -71,6 +71,64 @@
       {% for css in css2 %}
         {{ css|safe }}
       {% endfor %}
+      .text-comparison {
+        display: flex;
+        width: 100%;
+        font-family: monospace;
+        font-size: 12px;
+        border: 1px solid #ddd;
+      }
+      
+      .text-column {
+        flex: 1;
+        padding: 0;
+        background: #fff;
+        overflow-x: hidden;
+      }
+      
+      .text-column + .text-column {
+        border-left: 1px solid #ddd;
+      }
+      
+      .column-header {
+        padding: 8px;
+        background: #f6f8fa;
+        border-bottom: 1px solid #ddd;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      
+      .text-line {
+        padding: 0 10px;
+        margin: 0;
+        min-height: 20px;
+        line-height: 20px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+      }
+      
+      .text-line:hover {
+        background-color: #f6f8fa;
+      }
+      
+      .left-only {
+        background-color: #e6ffed;
+      }
+      
+      .right-only {
+        background-color: #e6ffed;
+      }
+      
+      .modified {
+        /* Remove the background-color from here */
+      }
+      
+      .diff-highlight {
+        background-color: #ffeef0;
+        color: #b31d28;
+      }
     </style>
     <script>
       function openTab(evt, tabName) {
@@ -135,6 +193,7 @@
       <button class="tablinks" onclick="openTab(event, 'Websites')">Websites</button>
       <button class="tablinks" onclick="openTab(event, 'Headers')">Headers</button>
       <button class="tablinks" onclick="openTab(event, 'Links')">Links</button>
+      <button class="tablinks" onclick="openTab(event, 'TextTab')">Text Comparison</button>
     </div>
 
     <div id="Websites" class="tabcontent">
@@ -222,6 +281,63 @@
           </ul>
         </div>
       </div>
+    </div>
+
+    <div id="TextTab" class="tabcontent">
+      {% if text_comparison %}
+        <div class="text-comparison">
+          <div class="text-column">
+            <div class="column-header">{{ url1 }}</div>
+            {% for item in text_comparison %}
+              {% if item[0] == 'both' %}
+                <div class="text-line">{{ item[1] }}</div>
+              {% elif item[0] == 'left' %}
+                <div class="text-line left-only">{{ item[1] }}</div>
+              {% elif item[0] == 'modified' %}
+                <div class="text-line left-only modified">
+                  {%- set line = item[1] -%}
+                  {%- set changes = item[3] -%}
+                  {%- set last_pos = 0 -%}
+                  {%- for start, end in changes -%}
+                    {{- line[last_pos:start] -}}
+                    <span class="diff-highlight">{{- line[start:end] -}}</span>
+                    {%- set last_pos = end -%}
+                  {%- endfor -%}
+                  {{- line[last_pos:] -}}
+                </div>
+              {% else %}
+                <div class="text-line"> </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+          <div class="text-column">
+            <div class="column-header">{{ url2 }}</div>
+            {% for item in text_comparison %}
+              {% if item[0] == 'both' %}
+                <div class="text-line">{{ item[2] if item[2] else item[1] }}</div>
+              {% elif item[0] == 'right' %}
+                <div class="text-line right-only">{{ item[2] }}</div>
+              {% elif item[0] == 'modified' %}
+                <div class="text-line right-only modified">
+                  {%- set line = item[2] -%}
+                  {%- set changes = item[4] -%}
+                  {%- set last_pos = 0 -%}
+                  {%- for start, end in changes -%}
+                    {{- line[last_pos:start] -}}
+                    <span class="diff-highlight">{{- line[start:end] -}}</span>
+                    {%- set last_pos = end -%}
+                  {%- endfor -%}
+                  {{- line[last_pos:] -}}
+                </div>
+              {% else %}
+                <div class="text-line"> </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      {% else %}
+        <p>Enter URLs to compare text content.</p>
+      {% endif %}
     </div>
 
     <script>

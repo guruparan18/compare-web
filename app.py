@@ -164,7 +164,7 @@ def index():
         if isinstance(soup2, BeautifulSoup):
             content2 = soup2.prettify()
             css2, broken_links2 = fetch_css(soup2, url2)
-            images2 = fetch_images(soup1, url1)  # Fetch images for URL1
+            images2 = fetch_images(soup2, url2)  # Fetch images for URL1
             results2 = list_items(soup2)
             links2 = fetch_links(soup2, url2)  # Fetch links for URL2
 

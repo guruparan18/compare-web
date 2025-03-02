@@ -2,8 +2,12 @@ from flask import Flask, request, render_template
 import requests
 from bs4 import BeautifulSoup
 import difflib
+from database import init_db, store_comparison, get_recent_comparisons, get_comparison
 
 app = Flask(__name__)
+
+# Initialize the database when the app starts
+init_db()
 
 @app.template_filter('url_to_path')
 def url_to_path(url):
@@ -13,7 +17,7 @@ def url_to_path(url):
     if path.endswith('.html'):
         path = path[:-5]
     elif path.endswith('/'):
-            path = path[:-1]
+        path = path[:-1]
     return path
 
 def fetch_images(soup, base_url):
@@ -189,7 +193,8 @@ def index():
     results1, results2 = {}, {}
     links1, links2 = [], []
     links_comparison = []
-    text_comparison = None  # New variable for text comparison
+    text_comparison = None
+    recent_comparisons = get_recent_comparisons()  # Get recent comparisons for display
 
     if request.method == "POST":
         url1 = request.form.get("url1")
@@ -227,6 +232,30 @@ def index():
         if links1 and links2:
             links_comparison = compare_links(links1, links2)
 
+        # After all comparisons are done, store the results
+        comparison_data = {
+            'url1': url1,
+            'url2': url2,
+            'content1': content1,
+            'content2': content2,
+            'css1': css1,
+            'css2': css2,
+            'comparison': comparison,
+            'error1': error1,
+            'error2': error2,
+            'broken_links1': broken_links1,
+            'broken_links2': broken_links2,
+            'images1': images1,
+            'images2': images2,
+            'results1': results1,
+            'results2': results2,
+            'links1': links1,
+            'links2': links2,
+            'links_comparison': links_comparison,
+            'text_comparison': text_comparison
+        }
+        store_comparison(comparison_data)
+
     return render_template(
         "template.html",
         url1=url1,
@@ -247,9 +276,21 @@ def index():
         links1=links1,
         links2=links2,
         links_comparison=links_comparison,
-        text_comparison=text_comparison,  # Add text comparison to template context
+        text_comparison=text_comparison,
+        recent_comparisons=recent_comparisons  # Add recent comparisons to template
     )
 
+# Add a new route to view historical comparisons
+@app.route("/comparison/<int:comparison_id>")
+def view_comparison(comparison_id):
+    comparison_data = get_comparison(comparison_id)
+    if comparison_data:
+        return render_template(
+            "template.html",
+            **comparison_data,
+            recent_comparisons=get_recent_comparisons()
+        )
+    return "Comparison not found", 404
 
 if __name__ == "__main__":
     app.run(host="localhost", port=3000, debug=True)

@@ -129,6 +129,32 @@
         background-color: #ffeef0;
         color: #b31d28;
       }
+      .recent-comparisons {
+        margin: 20px 0;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      
+      .recent-comparisons ul {
+        list-style: none;
+        padding: 0;
+      }
+      
+      .recent-comparisons li {
+        margin: 5px 0;
+        padding: 5px;
+        border-bottom: 1px solid #eee;
+      }
+      
+      .recent-comparisons a {
+        text-decoration: none;
+        color: #0366d6;
+      }
+      
+      .recent-comparisons a:hover {
+        text-decoration: underline;
+      }
     </style>
     <script>
       function openTab(evt, tabName) {
@@ -188,6 +214,21 @@
       <br>
       <button type="submit">Submit</button>
     </form>
+
+    {% if recent_comparisons %}
+    <div class="recent-comparisons">
+        <h2>Recent Comparisons</h2>
+        <ul>
+            {% for id, url1, url2, timestamp in recent_comparisons %}
+            <li>
+                <a href="{{ url_for('view_comparison', comparison_id=id) }}">
+                    {{ timestamp }} - {{ url1 }} vs {{ url2 }}
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
 
     <div class="tab">
       <button class="tablinks" onclick="openTab(event, 'Websites')">Websites</button>

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crawl Results</title>
+</head>
+<body>
+    <h1>Web Crawler</h1>
+    <form method="POST">
+        <label for="home_url">Enter URL to Crawl:</label>
+        <input type="url" id="home_url" name="home_url" required>
+        <button type="submit">Crawl</button>
+    </form>
+
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+
+    {% if results %}
+        <h2>Internal Links</h2>
+        <ul>
+            {% for link in results.internal_links %}
+                <li>{{ link }}</li>
+            {% endfor %}
+        </ul>
+
+        <h2>External Links</h2>
+        <ul>
+            {% for link in results.external_links %}
+                <li>{{ link }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</body>
+</html>

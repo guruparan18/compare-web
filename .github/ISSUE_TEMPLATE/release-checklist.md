@@ -8,110 +8,155 @@ assignees: []
 
 # Release Checklist
 
-Use this checklist to ensure all release tasks are completed before deployment.
+Use this checklist to ensure all necessary tasks are completed before deploying your Django/Wagtail project to AWS.
 
 ## 1. Pre-Release
 
 - [ ] **Version Bump**  
-  - Confirm/update project version in `setup.py`, `pyproject.toml`, or relevant version file.
-  - If you’re using Docker images, ensure the image tags match the new release version.
+  - Update project version in `setup.py`, `pyproject.toml`, or a dedicated version file.
+  - For Docker images, ensure image tags match the release version.
 
 - [ ] **Changelog**  
-  - Update `CHANGELOG.md` (or release notes).  
-  - Document all notable changes, bug fixes, and new features.
+  - Update `CHANGELOG.md` (or release notes).
+  - Document all relevant changes (features, fixes, improvements).
 
 - [ ] **Dependency Review**  
-  - Review Python package dependencies in `requirements.txt` or `Pipfile`.  
-  - Update any out-of-date or vulnerable packages.  
-  - Ensure requirements are locked to known-good versions if needed.
+  - Review Python packages in `requirements.txt` / `Pipfile`.
+  - Update out-of-date or vulnerable packages.
+  - Ensure pinned versions are correct if needed.
 
 - [ ] **Tests**  
-  - Ensure automated tests (unit/integration) pass (CI should be green).  
-  - Check code coverage reports to confirm thresholds are met.  
+  - Confirm all tests pass (CI green).
+  - Check code coverage meets required thresholds.
 
-- [ ] **Lint and Static Analysis**  
-  - Confirm code base passes lint checks (flake8, black, isort, etc.).  
-  - Fix any warnings or style errors.
+- [ ] **Lint & Static Analysis**  
+  - Confirm codebase passes flake8, black, isort (or equivalent).
+  - Address any code quality warnings or style issues.
+
+---
 
 ## 2. Infrastructure Checks (AWS)
 
 - [ ] **Infrastructure as Code**  
-  - If you use Terraform/CloudFormation, ensure the changes for this release have been planned/applied to the correct environment.  
-  - Validate no unexpected infrastructure drifts.
+  - If using Terraform/CloudFormation, ensure changes for this release are planned and applied to the correct environment.
+  - Check for unexpected infrastructure drift.
 
 - [ ] **Secrets & Environment Variables**  
-  - Confirm that any new environment variables required for this release are set (e.g., in AWS SSM Parameter Store, Secrets Manager, or environment configuration).  
-  - Double-check that secrets are correctly configured and encrypted.
+  - Verify that any new environment variables are set (e.g., in AWS SSM Parameter Store, Secrets Manager).
+  - Ensure secrets (like database credentials) are properly stored and encrypted.
 
 - [ ] **AWS Services**  
-  - If using AWS Lambda, ECR, or ECS, verify that new Docker images or function packages are updated.  
-  - For EC2 or ECS-based hosting, ensure the new AMI/image is built and tested.  
-  - Check relevant AWS logs (CloudWatch) for errors in staging/pre-production environment.
+  - If using Docker/ECR/ECS, confirm new container images are built, pushed, and tested.
+  - For EC2-based hosting, confirm new AMI or configurations are in place.
+  - Check logs in AWS CloudWatch for errors in staging/pre-production.
 
-- [ ] **Scaling/Load Testing** (if relevant)  
-  - For major releases or significant changes, run a load test to verify AWS can handle expected traffic.  
-  - Review CloudWatch metrics and auto-scaling settings.
+- [ ] **Scaling / Load Testing** (if applicable)  
+  - Perform load or stress testing if it’s a major release or expected high traffic.
+  - Verify auto-scaling settings are valid.
 
-## 3. Wagtail / Django-Specific Checks
+---
+
+## 3. Django & Wagtail Deployment Checklist
+
+This section includes key points from the [Django 5.2 Deployment Checklist](https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/) **plus** Wagtail considerations:
+
+### 3.1 Security-Related Settings
+
+- [ ] **DEBUG is OFF**  
+  - Make sure `DEBUG = False` in your production settings.
+
+- [ ] **Allowed Hosts**  
+  - Properly configure `ALLOWED_HOSTS` for all your domain(s).
+
+- [ ] **Secret Key**  
+  - Ensure `SECRET_KEY` is unique, confidential, and not committed to source control (use environment variables or AWS Secrets Manager).
+
+- [ ] **SSL / HTTPS**  
+  - Confirm HTTPS is enforced.
+  - Check redirects from HTTP to HTTPS at load balancer or server level.
+
+- [ ] **CSRF & Session Settings**  
+  - Confirm `CSRF_COOKIE_SECURE` and `SESSION_COOKIE_SECURE` are set to `True` for HTTPS.
+  - Consider using `CSRF_TRUSTED_ORIGINS` for known domains.
+
+- [ ] **Security Middleware**  
+  - Ensure `X-Frame-Options` is properly set (e.g., `SAMEORIGIN` for Wagtail).
+  - Check if `SECURE_HSTS_SECONDS`, `SECURE_HSTS_INCLUDE_SUBDOMAINS`, and other relevant middleware settings are configured.
+
+- [ ] **File Permissions & Ownership**  
+  - Verify the application user does not have unnecessary write privileges.
+  - Lock down any sensitive directories.
+
+- [ ] **Logging & Error Reporting**  
+  - Confirm error logging is set up for production (e.g., Sentry, AWS CloudWatch, or similar).
+  - Ensure debug logs are not publicly visible.
+
+### 3.2 Database & Migrations
 
 - [ ] **Migrations**  
-  - Run `python manage.py makemigrations` and `python manage.py migrate` in a test environment to ensure database migrations succeed.  
-  - Validate backward compatibility if necessary.
+  - Run `manage.py makemigrations` and `manage.py migrate` in a test environment to ensure DB changes are valid.
+  - Check backward compatibility if partial rollbacks might be needed.
 
-- [ ] **Wagtail Pages / CMS Updates**  
-  - Confirm that any new page models or content blocks work as expected.  
-  - Run through the Wagtail admin to verify new fields or features are functioning.
+- [ ] **Database Security**  
+  - Ensure DB credentials are properly stored (AWS RDS, for example).
+  - Restrict DB access to necessary hosts/security groups.
 
-- [ ] **Static Files**  
-  - Check that static files (CSS/JS/images) are collected properly with `collectstatic`.  
-  - Confirm the CDN or S3 bucket is serving the correct versions.
+### 3.3 Wagtail-Specific Checks
 
-- [ ] **Security / Auth**  
-  - Verify any new routes or Wagtail admin features are properly permission-protected.  
-  - Check that Django’s `ALLOWED_HOSTS`, CSRF settings, and HTTPS configurations are correct.
+- [ ] **Admin & Page Models**  
+  - Confirm new Wagtail page models, admin features, or content blocks function as expected.
+  - Check for permission settings for new or changed Wagtail admin features.
+
+- [ ] **Static / Media Files**  
+  - Run `collectstatic` to gather static files for production (ensure correct S3/CloudFront config, if applicable).
+  - Verify media uploads are served correctly from the designated storage (S3, local, etc.).
+
+---
 
 ## 4. Final Confirmation
 
 - [ ] **Documentation**  
-  - Update or confirm docs are accurate for new features, changes, or environment instructions (README, wiki, etc.).
+  - Update READMEs, wiki, or inline docs for any new features or config instructions.
 
-- [ ] **Smoke Test in Staging**  
-  - Deploy the release candidate to staging/test environment.  
-  - Perform a quick end-to-end check on critical paths:
-    - User login
-    - CRUD operations
-    - Wagtail admin usage
-    - AWS health checks/logs
+- [ ] **Smoke Test (Staging / Pre-Production)**  
+  - Deploy the release candidate to staging.
+  - Perform a quick end-to-end check:
+    - User login/auth.
+    - Major Wagtail admin tasks.
+    - Critical routes or APIs.
+    - AWS logs/metrics for any immediate errors.
 
 - [ ] **Sign Off**  
-  - Team lead, QA, or product manager approves the staging/test environment.
-
-## 5. Production Deployment
-
-- [ ] **Scheduled Deployment Window**  
-  - Coordinate deployment timing with the team.  
-  - Notify stakeholders of any downtime, if applicable.
-
-- [ ] **Tag & Release**  
-  - Create a Git tag and GitHub release if using GitHub’s release system.  
-  - Publish release notes.
-
-- [ ] **Post-Deployment Checks**  
-  - Monitor logs and alerts for issues (e.g., CloudWatch, Sentry, New Relic).  
-  - Confirm all services (EC2/ECS, Lambdas, DB) are operating correctly.
-
-- [ ] **Rollback Plan**  
-  - Have a rollback or hotfix plan ready if critical issues arise.  
-  - Confirm that the previous release version is still deployable if needed.
+  - Team lead, QA, or product owner approves the staging environment as production-ready.
 
 ---
 
-**Additional notes or attachments:**  
-<details>
-<summary>Optional: Additional context or screenshots</summary>
+## 5. Production Deployment
 
-<!-- Provide any relevant extra context for this release -->
+- [ ] **Deployment Window & Communication**  
+  - Schedule or communicate the planned deployment time to relevant teams/stakeholders.
+  - Confirm if any downtime or rolling deploy is planned.
+
+- [ ] **Create Git Tag & Release**  
+  - Tag the commit with the release version (`vX.X.X`).
+  - Publish release notes on GitHub if using GitHub’s release system.
+
+- [ ] **Post-Deployment Verification**  
+  - Monitor logs (e.g., CloudWatch, Sentry, etc.) for critical errors.
+  - Verify key user paths and admin functionality in production.
+  - Confirm correct environment settings (no accidental `DEBUG=True`).
+
+- [ ] **Rollback / Hotfix Plan**  
+  - Make sure the previous stable release is accessible if you need to revert.
+  - Document any hotfix procedures if immediate patches are needed.
+
+---
+
+### Additional Notes or Attachments
+
+<details>
+<summary>Optional: Extra context or screenshots</summary>
+
+<!-- Add any relevant screenshots, links, or context here -->
 
 </details>
-
-

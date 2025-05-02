@@ -30,11 +30,17 @@ def crawl():
     if request.method == "POST":
         home_url = request.form.get("home_url")
         if home_url:
+            crawler = None
             try:
                 crawler = WebCrawler(home_url)
-                results = crawler.crawl(max_pages=10)  # Limit to 10 pages
+                results = crawler.crawl(max_pages=5)
+            except ValueError as ve:
+                print(f"Initialization Error: {ve}")
             except Exception as e:
-                error = f"Error during crawling: {e}"
+                print(f"An error occurred during crawling: {e}")
+            finally:
+                if crawler:
+                    crawler.close_session() # Ensure session is closed
         else:
             error = "Please provide a valid URL."
     return render_template("crawl.html", results=results, error=error)    

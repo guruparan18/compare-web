@@ -1,36 +1,95 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crawl Results</title>
+    <title>Basic Web Crawler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Basic Tailwind config (can be extended)
+        tailwind.config = {
+          theme: {
+            extend: {
+              fontFamily: {
+                sans: ['Inter', 'sans-serif'], // Use Inter font like template.html
+              },
+            }
+          }
+        }
+      </script>
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body>
-    <h1>Web Crawler</h1>
-    <form method="POST">
-        <label for="home_url">Enter URL to Crawl:</label>
-        <input type="url" id="home_url" name="home_url" required>
-        <button type="submit">Crawl</button>
-    </form>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-4 md:p-8 max-w-3xl">
+        <h1 class="text-2xl md:text-3xl font-bold text-gray-800 mb-6 text-center">Basic Web Crawler</h1>
 
-    {% if error %}
-        <p style="color: red;">{{ error }}</p>
-    {% endif %}
+        <form method="POST" class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <label for="home_url" class="block text-sm font-medium text-gray-700 mb-2">Enter URL to Crawl:</label>
+            <div class="flex flex-col sm:flex-row gap-2">
+                {# Input field for the URL #}
+                <input type="url" id="home_url" name="home_url" value="{{ home_url or '' }}" required
+                       placeholder="https://example.com"
+                       class="flex-grow px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-sm">
+                {# Submit button #}
+                <button type="submit"
+                        class="px-4 py-2 bg-indigo-600 text-white font-medium rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out text-sm">
+                    Crawl
+                </button>
+            </div>
+        </form>
 
-    {% if results %}
-        <h2>Internal Links</h2>
-        <ul>
-            {% for link in results.internal_links %}
-                <li>{{ link }}</li>
-            {% endfor %}
-        </ul>
+        {% if error %}
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative mb-6" role="alert">
+                <strong class="font-bold">Error:</strong>
+                <span class="block sm:inline">{{ error }}</span>
+            </div>
+        {% endif %}
 
-        <h2>External Links</h2>
-        <ul>
-            {% for link in results.external_links %}
-                <li>{{ link }}</li>
-            {% endfor %}
-        </ul>
-    {% endif %}
+        {% if results %}
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Crawl Results for <span class="font-mono break-all text-indigo-700">{{ home_url }}</span></h2>
+
+                {# Internal Links Section #}
+                <div class="mb-6">
+                    <h3 class="text-lg font-medium text-gray-700 mb-2">Internal Links ({{ results.internal_links|length }})</h3>
+                    {% if results.internal_links %}
+                        {# Scrollable list for internal links #}
+                        <ul class="list-disc list-inside space-y-1 text-sm max-h-60 overflow-y-auto bg-gray-50 p-3 rounded border border-gray-200">
+                            {% for link in results.internal_links %}
+                                <li class="break-all">
+                                    <a href="{{ link }}" target="_blank" class="text-blue-600 hover:underline" title="{{ link }}">{{ link }}</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-sm text-gray-500 italic">No internal links found.</p>
+                    {% endif %}
+                </div>
+
+                {# External Links Section #}
+                <div>
+                    <h3 class="text-lg font-medium text-gray-700 mb-2">External Links ({{ results.external_links|length }})</h3>
+                     {% if results.external_links %}
+                        {# Scrollable list for external links #}
+                        <ul class="list-disc list-inside space-y-1 text-sm max-h-60 overflow-y-auto bg-gray-50 p-3 rounded border border-gray-200">
+                            {% for link in results.external_links %}
+                                <li class="break-all">
+                                    <a href="{{ link }}" target="_blank" class="text-blue-600 hover:underline" title="{{ link }}">{{ link }}</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                         <p class="text-sm text-gray-500 italic">No external links found.</p>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+
+        <footer class="text-center text-gray-500 text-sm mt-8">
+             <p><a href="{{ url_for('index') }}" class="text-indigo-600 hover:underline">Back to Comparison Tool</a></p>
+        </footer>
+    </div>
 </body>
 </html>

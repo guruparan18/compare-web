@@ -4,6 +4,8 @@ from bs4 import BeautifulSoup
 import difflib
 from database import init_db, store_comparison, get_recent_comparisons, get_comparison
 from crawler import WebCrawler
+from urllib.parse import urlparse, urljoin # Make sure urlparse is imported
+
 
 app = Flask(__name__)
 
@@ -23,6 +25,27 @@ def url_to_path(url):
     return path
 
 
+@app.template_filter('url_path')
+def extract_url_path(url):
+    """Jinja filter to extract the path, query, and fragment from a URL."""
+    if not url:
+        return ''
+    try:
+        parsed = urlparse(str(url))
+        # Start with path, default to '/' if empty
+        path = parsed.path if parsed.path else '/'
+        # Add query string if present
+        if parsed.query:
+            path += '?' + parsed.query
+        # Add fragment if present
+        if parsed.fragment:
+            path += '#' + parsed.fragment
+        return path
+    except Exception:
+        # Fallback to the original URL string in case of parsing errors
+        return str(url)
+
+
 @app.route("/crawl", methods=["GET", "POST"])
 def crawl():
     results = None
@@ -33,7 +56,7 @@ def crawl():
             crawler = None
             try:
                 crawler = WebCrawler(home_url)
-                results = crawler.crawl(max_pages=5)
+                results = crawler.crawl(max_pages=5000)
             except ValueError as ve:
                 print(f"Initialization Error: {ve}")
             except Exception as e:

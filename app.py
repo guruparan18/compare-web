@@ -2,6 +2,7 @@ from flask import Flask, request, render_template
 import requests
 from bs4 import BeautifulSoup
 import difflib
+from concurrent.futures import ThreadPoolExecutor
 from database import init_db, store_comparison, get_recent_comparisons, get_comparison
 from crawler import WebCrawler
 from urllib.parse import urlparse, urljoin # Make sure urlparse is imported
@@ -114,17 +115,17 @@ def list_items(soup):
     return output
 
 def validate_links(links):
-    validated_links = []
-    for link in links:
+    def check_link(link):
         try:
             response = requests.head(link, allow_redirects=True)
             if response.status_code != 200:
-                validated_links.append((link, f"ERROR ({response.status_code})"))
-            else:
-                validated_links.append((link, "OK"))
+                return (link, f"ERROR ({response.status_code})")
+            return (link, "OK")
         except requests.RequestException as e:
-            validated_links.append((link, f"ERROR ({str(e)})"))
-    return validated_links
+            return (link, f"ERROR ({str(e)})")
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        return list(executor.map(check_link, links))
 
 def fetch_links(soup, base_url):
     links = []
@@ -249,30 +250,48 @@ def index():
         url1 = request.form.get("url1")
         url2 = request.form.get("url2")
 
-        soup1 = fetch_and_parse(url1)
-        if isinstance(soup1, BeautifulSoup):
-            content1 = soup1.prettify()
-            css1, broken_links1 = fetch_css(soup1, url1)
-            images1 = fetch_images(soup1, url1)
-            results1 = list_items(soup1)
-            links1 = fetch_links(soup1, url1)
-            text1 = extract_text(soup1)  # Extract text from first URL
-        else:
-            error1 = soup1
+        def process(url):
+            soup = fetch_and_parse(url)
+            if isinstance(soup, BeautifulSoup):
+                return {
+                    'content': soup.prettify(),
+                    'css': fetch_css(soup, url),
+                    'images': fetch_images(soup, url),
+                    'results': list_items(soup),
+                    'links': fetch_links(soup, url),
+                    'text': extract_text(soup),
+                    'error': None,
+                }
+            return {'error': soup}
 
-        soup2 = fetch_and_parse(url2)
-        if isinstance(soup2, BeautifulSoup):
-            content2 = soup2.prettify()
-            css2, broken_links2 = fetch_css(soup2, url2)
-            images2 = fetch_images(soup2, url2)
-            results2 = list_items(soup2)
-            links2 = fetch_links(soup2, url2)
-            text2 = extract_text(soup2)  # Extract text from second URL
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future1 = executor.submit(process, url1)
+            future2 = executor.submit(process, url2)
+            data1 = future1.result()
+            data2 = future2.result()
+
+        if not data1['error']:
+            content1 = data1['content']
+            css1, broken_links1 = data1['css']
+            images1 = data1['images']
+            results1 = data1['results']
+            links1 = data1['links']
+            text1 = data1['text']
         else:
-            error2 = soup2
+            error1 = data1['error']
+
+        if not data2['error']:
+            content2 = data2['content']
+            css2, broken_links2 = data2['css']
+            images2 = data2['images']
+            results2 = data2['results']
+            links2 = data2['links']
+            text2 = data2['text']
+        else:
+            error2 = data2['error']
 
         # Compare texts if both URLs were successfully fetched
-        if isinstance(soup1, BeautifulSoup) and isinstance(soup2, BeautifulSoup):
+        if not data1['error'] and not data2['error']:
             text_comparison = compare_text(text1, text2)
 
         if results1 and results2:

@@ -1,6 +1,6 @@
 # Compare Web
 
-A simple tool that runs in local and compares any two given website URLs that you have access to.
+A simple tool that runs locally and compares any two given website URLs that you have access to. The latest version performs fetching and link checks in parallel using threads for improved speed.
 
 ## Setup
 

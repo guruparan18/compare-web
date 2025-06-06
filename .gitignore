@@ -11,3 +11,6 @@ wheels/
 
 # SQLite database files
 *.db
+
+# Custom directories
+crawl_results/

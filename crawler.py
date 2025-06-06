@@ -2,6 +2,9 @@ import requests
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup, Tag # Import Tag
 from collections import deque # Use deque for efficient queue operations
+import csv
+import os
+from datetime import datetime
 
 # Optional: For robots.txt parsing
 # from urllib.robotparser import RobotFileParser
@@ -214,7 +217,52 @@ class WebCrawler:
                  else:
                      results['external'].append(detail)
 
+        # Store results in CSV file before returning
+        self._save_to_csv(results)
+
         return results # Return the structured details
+
+    def _save_to_csv(self, results):
+        """Save crawl results to a CSV file."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        domain_name = self.home_domain.replace('.', '_')
+        filename = f"crawl_results_{domain_name}_{timestamp}.csv"
+        
+        # Create directory if it doesn't exist
+        os.makedirs('crawl_results', exist_ok=True)
+        filepath = os.path.join('crawl_results', filename)
+        
+        with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['url', 'type', 'accessible', 'source_page', 'link_text', 'attributes']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            writer.writeheader()
+            
+            # Write internal links
+            for link_detail in results['internal']:
+                for source in link_detail['sources']:
+                    writer.writerow({
+                        'url': link_detail['url'],
+                        'type': 'internal',
+                        'accessible': link_detail['accessible'],
+                        'source_page': source['page'],
+                        'link_text': source['text'],
+                        'attributes': str(source['attributes'])
+                    })
+            
+            # Write external links
+            for link_detail in results['external']:
+                for source in link_detail['sources']:
+                    writer.writerow({
+                        'url': link_detail['url'],
+                        'type': 'external',
+                        'accessible': link_detail['accessible'],
+                        'source_page': source['page'],
+                        'link_text': source['text'],
+                        'attributes': str(source['attributes'])
+                    })
+        
+        print(f"Crawl results saved to: {filepath}")
 
     def close_session(self):
         """Closes the requests session."""

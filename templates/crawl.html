@@ -33,6 +33,23 @@
         .accessible-false { color: #e53e3e; /* red-600 */ font-weight: 500;}
         .url-cell { max-width: 300px; word-break: break-all; } /* Control URL width */
         .source-cell { max-width: 200px; word-break: break-all; }
+
+        th.th-sort-asc::after,
+        th.th-sort-desc::after {
+            content: ' ';
+            display: inline-block;
+            margin-left: 0.5em;
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+        }
+        th.th-sort-asc::after {
+            border-bottom: 5px solid currentColor; /* Arrow pointing up */
+        }
+        th.th-sort-desc::after {
+            border-top: 5px solid currentColor; /* Arrow pointing down */
+        }
     </style>
     <script>
         tailwind.config = {
@@ -44,6 +61,46 @@
             }
           }
         }
+    </script>
+    <script>
+        function sortTableByColumn(table, column, asc = true) {
+            const dirModifier = asc ? 1 : -1;
+            const tBody = table.tBodies[0];
+            const rows = Array.from(tBody.querySelectorAll("tr"));
+        
+            // Sort each row
+            const sortedRows = rows.sort((a, b) => {
+                const aColText = a.querySelector(`td:nth-child(${column + 1})`).textContent.trim().toLowerCase();
+                const bColText = b.querySelector(`td:nth-child(${column + 1})`).textContent.trim().toLowerCase();
+                return aColText > bColText ? (1 * dirModifier) : (-1 * dirModifier);
+            });
+        
+            // Remove all existing TRs from the TFOOT
+            while (tBody.firstChild) {
+                tBody.removeChild(tBody.firstChild);
+            }
+        
+            // Re-add the newly sorted rows
+            tBody.append(...sortedRows);
+        
+            // Remember the current sorting state
+            table.querySelectorAll("th").forEach(th => th.classList.remove("th-sort-asc", "th-sort-desc"));
+            table.querySelector(`th:nth-child(${column + 1})`).classList.toggle("th-sort-asc", asc);
+            table.querySelector(`th:nth-child(${column + 1})`).classList.toggle("th-sort-desc", !asc);
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll("table").forEach(table => {
+                const headers = table.querySelectorAll("th");
+                headers.forEach((header, index) => {
+                    header.style.cursor = 'pointer'; // Add a visual cue
+                    header.addEventListener("click", () => {
+                        const currentIsAscending = header.classList.contains("th-sort-asc");
+                        sortTableByColumn(table, index, !currentIsAscending);
+                    });
+                });
+            });
+        });
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

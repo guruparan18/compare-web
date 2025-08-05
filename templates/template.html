@@ -219,10 +219,10 @@
     <div class="recent-comparisons">
         <h2>Recent Comparisons</h2>
         <ul>
-            {% for id, url1, url2, timestamp in recent_comparisons %}
+            {% for comparison in recent_comparisons %}
             <li>
-                <a href="{{ url_for('view_comparison', comparison_id=id) }}">
-                    {{ timestamp }} - {{ url1 }} vs {{ url2 }}
+                <a href="{{ url_for('view_comparison', comparison_id=comparison.id) }}">
+                    {{ comparison.timestamp }} - {{ comparison.url1 }} vs {{ comparison.url2 }}
                 </a>
             </li>
             {% endfor %}

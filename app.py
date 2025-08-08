@@ -4,7 +4,8 @@ from bs4 import BeautifulSoup
 import difflib
 from database import init_db, store_comparison, get_recent_comparisons, get_comparison
 from crawler import WebCrawler
-from urllib.parse import urlparse, urljoin # Make sure urlparse is imported
+from urllib.parse import urlparse  # Make sure urlparse is imported
+from http_session_manager import fetch_with_session, close_all_sessions
 
 
 app = Flask(__name__)
@@ -13,33 +14,33 @@ app = Flask(__name__)
 init_db()
 
 
-@app.template_filter('url_to_path')
+@app.template_filter("url_to_path")
 def url_to_path(url):
     # Parse the URL to extract the path
     path = requests.compat.urlparse(url).path
     # Remove the ".html" extension if present
-    if path.endswith('.html'):
+    if path.endswith(".html"):
         path = path[:-5]
-    elif path.endswith('/'):
+    elif path.endswith("/"):
         path = path[:-1]
     return path
 
 
-@app.template_filter('url_path')
+@app.template_filter("url_path")
 def extract_url_path(url):
     """Jinja filter to extract the path, query, and fragment from a URL."""
     if not url:
-        return ''
+        return ""
     try:
         parsed = urlparse(str(url))
         # Start with path, default to '/' if empty
-        path = parsed.path if parsed.path else '/'
+        path = parsed.path if parsed.path else "/"
         # Add query string if present
         if parsed.query:
-            path += '?' + parsed.query
+            path += "?" + parsed.query
         # Add fragment if present
         if parsed.fragment:
-            path += '#' + parsed.fragment
+            path += "#" + parsed.fragment
         return path
     except Exception:
         # Fallback to the original URL string in case of parsing errors
@@ -63,10 +64,10 @@ def crawl():
                 print(f"An error occurred during crawling: {e}")
             finally:
                 if crawler:
-                    crawler.close_session() # Ensure session is closed
+                    crawler.close_session()  # Ensure session is closed
         else:
             error = "Please provide a valid URL."
-    return render_template("crawl.html", results=results, error=error)    
+    return render_template("crawl.html", results=results, error=error)
 
 
 def fetch_images(soup, base_url):
@@ -82,8 +83,7 @@ def fetch_images(soup, base_url):
 
 def fetch_and_parse(url):
     try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raise an error for bad responses
+        response = fetch_with_session(url, method="GET")
         return BeautifulSoup(response.text, "html.parser")
     except requests.RequestException as e:
         return f"Error fetching the URL: {e}"
@@ -98,8 +98,7 @@ def fetch_css(soup, base_url):
             if not href.startswith("http"):
                 href = requests.compat.urljoin(base_url, href)
             try:
-                css_response = requests.get(href)
-                css_response.raise_for_status()
+                css_response = fetch_with_session(href, method="GET")
                 css_links.append(css_response.text)
             except requests.RequestException:
                 broken_links.append(href)
@@ -113,18 +112,13 @@ def list_items(soup):
             output[f"h{i}"].append(header.get_text(strip=True))
     return output
 
+
 def validate_links(links):
-    validated_links = []
-    for link in links:
-        try:
-            response = requests.head(link, allow_redirects=True)
-            if response.status_code != 200:
-                validated_links.append((link, f"ERROR ({response.status_code})"))
-            else:
-                validated_links.append((link, "OK"))
-        except requests.RequestException as e:
-            validated_links.append((link, f"ERROR ({str(e)})"))
-    return validated_links
+    """Parallel link validation for improved performance"""
+    from parallel_link_validator import validate_links_parallel
+
+    return validate_links_parallel(links, max_workers=20)
+
 
 def fetch_links(soup, base_url):
     links = []
@@ -141,9 +135,9 @@ def compare_links(links1, links2):
         # Parse the URL to extract the path
         path = requests.compat.urlparse(link).path
         # Remove the ".html" extension if present
-        if path.endswith('.html'):
+        if path.endswith(".html"):
             path = path[:-5]
-        elif path.endswith('/'):
+        elif path.endswith("/"):
             path = path[:-1]
         return path
 
@@ -157,9 +151,9 @@ def compare_links(links1, links2):
     # Compare links and store results
     for link in normalized_links1.union(normalized_links2):
         if link in normalized_links1 and link in normalized_links2:
-            comparison[link] = 'both'
+            comparison[link] = "both"
         else:
-            comparison[link] = 'one'
+            comparison[link] = "one"
 
     return comparison
 
@@ -187,50 +181,59 @@ def compare_items(items1, items2):
                 comparison[key].append((None, item, "one"))  # Present in one
     return comparison
 
+
 def extract_text(soup):
     # Remove script and style elements
     for script in soup(["script", "style"]):
         script.decompose()
     # Get text and normalize whitespace
-    text = soup.get_text(separator='\n')
-    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    text = soup.get_text(separator="\n")
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
     return lines
+
 
 def compare_text(text1, text2):
     # Use difflib to compare text
     d = difflib.SequenceMatcher(None, text1, text2)
     comparison = []
-    
+
     for tag, i1, i2, j1, j2 in d.get_opcodes():
-        if tag == 'equal':
+        if tag == "equal":
             # Text is the same in both versions
             for line in text1[i1:i2]:
-                comparison.append(('both', line, None))
-        elif tag == 'replace':
+                comparison.append(("both", line, None))
+        elif tag == "replace":
             # Text is modified - find character-level differences
             for line1, line2 in zip(text1[i1:i2], text2[j1:j2]):
                 s = difflib.SequenceMatcher(None, line1, line2)
                 left_changes = []
                 right_changes = []
-                last_left = 0
-                last_right = 0
-                
-                for subtag, left_start, left_end, right_start, right_end in s.get_opcodes():
-                    if subtag != 'equal':
+
+                for (
+                    subtag,
+                    left_start,
+                    left_end,
+                    right_start,
+                    right_end,
+                ) in s.get_opcodes():
+                    if subtag != "equal":
                         left_changes.append((left_start, left_end))
                         right_changes.append((right_start, right_end))
-                
-                comparison.append(('modified', line1, line2, left_changes, right_changes))
-        elif tag == 'delete':
+
+                comparison.append(
+                    ("modified", line1, line2, left_changes, right_changes)
+                )
+        elif tag == "delete":
             # Text only in first sequence
             for line in text1[i1:i2]:
-                comparison.append(('left', line, None))
-        elif tag == 'insert':
+                comparison.append(("left", line, None))
+        elif tag == "insert":
             # Text only in second sequence
             for line in text2[j1:j2]:
-                comparison.append(('right', None, line))
-    
+                comparison.append(("right", None, line))
+
     return comparison
+
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -283,25 +286,25 @@ def index():
 
         # After all comparisons are done, store the results
         comparison_data = {
-            'url1': url1,
-            'url2': url2,
-            'content1': content1,
-            'content2': content2,
-            'css1': css1,
-            'css2': css2,
-            'comparison': comparison,
-            'error1': error1,
-            'error2': error2,
-            'broken_links1': broken_links1,
-            'broken_links2': broken_links2,
-            'images1': images1,
-            'images2': images2,
-            'results1': results1,
-            'results2': results2,
-            'links1': links1,
-            'links2': links2,
-            'links_comparison': links_comparison,
-            'text_comparison': text_comparison
+            "url1": url1,
+            "url2": url2,
+            "content1": content1,
+            "content2": content2,
+            "css1": css1,
+            "css2": css2,
+            "comparison": comparison,
+            "error1": error1,
+            "error2": error2,
+            "broken_links1": broken_links1,
+            "broken_links2": broken_links2,
+            "images1": images1,
+            "images2": images2,
+            "results1": results1,
+            "results2": results2,
+            "links1": links1,
+            "links2": links2,
+            "links_comparison": links_comparison,
+            "text_comparison": text_comparison,
         }
         store_comparison(comparison_data)
 
@@ -326,8 +329,9 @@ def index():
         links2=links2,
         links_comparison=links_comparison,
         text_comparison=text_comparison,
-        recent_comparisons=recent_comparisons  # Add recent comparisons to template
+        recent_comparisons=recent_comparisons,  # Add recent comparisons to template
     )
+
 
 # Add a new route to view historical comparisons
 @app.route("/comparison/<int:comparison_id>")
@@ -337,9 +341,14 @@ def view_comparison(comparison_id):
         return render_template(
             "template.html",
             **comparison_data,
-            recent_comparisons=get_recent_comparisons()
+            recent_comparisons=get_recent_comparisons(),
         )
     return "Comparison not found", 404
 
+
 if __name__ == "__main__":
-    app.run(host="localhost", port=3000, debug=True)
+    try:
+        app.run(host="localhost", port=3000, debug=True)
+    finally:
+        # Clean up sessions when the app shuts down
+        close_all_sessions()

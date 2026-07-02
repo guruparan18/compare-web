@@ -11,6 +11,8 @@ wheels/
 
 # SQLite database files
 *.db
+*.db-shm
+*.db-wal
 
 # Custom directories
 crawl_results/

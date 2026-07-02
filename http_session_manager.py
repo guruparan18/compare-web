@@ -2,7 +2,63 @@ import requests
 from urllib.parse import urlparse
 from typing import Dict
 import threading
+import ipaddress
+import socket
 from contextlib import contextmanager
+
+
+class UnsafeURLError(ValueError):
+    """Raised when a URL targets a disallowed scheme or a private/internal host."""
+
+
+def _is_disallowed_ip(ip: "ipaddress._BaseAddress") -> bool:
+    """True for addresses that must never be reached from a user-supplied URL."""
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local  # includes 169.254.169.254 cloud metadata
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def assert_safe_url(url: str) -> None:
+    """
+    Guard against SSRF: only allow http(s) URLs whose host does not resolve to a
+    private, loopback, link-local, or otherwise internal address. Raises
+    UnsafeURLError when the URL should not be fetched.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise UnsafeURLError(f"Disallowed URL scheme: {parsed.scheme or '(none)'}")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise UnsafeURLError("URL has no host")
+
+    # If the host is a literal IP, check it directly.
+    try:
+        literal_ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        literal_ip = None  # Not a literal IP; resolve the hostname below.
+
+    if literal_ip is not None:
+        if _is_disallowed_ip(literal_ip):
+            raise UnsafeURLError(f"Disallowed host address: {hostname}")
+        return
+
+    try:
+        addr_info = socket.getaddrinfo(hostname, parsed.port or None)
+    except socket.gaierror as e:
+        raise UnsafeURLError(f"Could not resolve host {hostname}: {e}") from e
+
+    for family, _, _, _, sockaddr in addr_info:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if _is_disallowed_ip(ip):
+            raise UnsafeURLError(
+                f"Host {hostname} resolves to disallowed address {ip}"
+            )
 
 
 class HTTPSessionManager:
@@ -96,6 +152,9 @@ def fetch_with_session(url: str, method: str = "GET", **kwargs) -> requests.Resp
         method: HTTP method ('GET', 'HEAD', etc.)
         **kwargs: Additional arguments to pass to the request
     """
+    # Block SSRF to internal/metadata addresses before opening any connection.
+    assert_safe_url(url)
+
     session = get_session_for_url(url)
 
     # Set default timeout if not provided

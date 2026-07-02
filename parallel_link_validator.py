@@ -24,7 +24,7 @@ class ParallelLinkValidator:
                 response = requests.head(
                     link, allow_redirects=True, timeout=self.timeout
                 )
-                if response.status_code == 200:
+                if 200 <= response.status_code < 400:
                     return (link, "OK")
                 else:
                     return (link, f"ERROR ({response.status_code})")
@@ -64,7 +64,7 @@ class ParallelLinkValidator:
                     allow_redirects=True,
                     timeout=aiohttp.ClientTimeout(total=self.timeout),
                 ) as response:
-                    if response.status == 200:
+                    if 200 <= response.status < 400:
                         return (link, "OK")
                     else:
                         return (link, f"ERROR ({response.status})")

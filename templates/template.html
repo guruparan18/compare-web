@@ -190,9 +190,14 @@
         }
       }
 
+      function escapeRegExp(text) {
+        return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+
       function highlightText(elementId, text, className) {
+        if (!text) return;
         const element = document.getElementById(elementId);
-        const regex = new RegExp(`(${text})`, 'gi');
+        const regex = new RegExp(`(${escapeRegExp(text)})`, 'gi');
         element.innerHTML = element.innerHTML.replace(regex, `<span class="${className}">$1</span>`);
       }
       function highlightBrokenLinks() {
@@ -338,13 +343,13 @@
                 <div class="text-line left-only modified">
                   {%- set line = item[1] -%}
                   {%- set changes = item[3] -%}
-                  {%- set last_pos = 0 -%}
+                  {%- set ns = namespace(last_pos=0) -%}
                   {%- for start, end in changes -%}
-                    {{- line[last_pos:start] -}}
+                    {{- line[ns.last_pos:start] -}}
                     <span class="diff-highlight">{{- line[start:end] -}}</span>
-                    {%- set last_pos = end -%}
+                    {%- set ns.last_pos = end -%}
                   {%- endfor -%}
-                  {{- line[last_pos:] -}}
+                  {{- line[ns.last_pos:] -}}
                 </div>
               {% else %}
                 <div class="text-line"> </div>
@@ -362,13 +367,13 @@
                 <div class="text-line right-only modified">
                   {%- set line = item[2] -%}
                   {%- set changes = item[4] -%}
-                  {%- set last_pos = 0 -%}
+                  {%- set ns = namespace(last_pos=0) -%}
                   {%- for start, end in changes -%}
-                    {{- line[last_pos:start] -}}
+                    {{- line[ns.last_pos:start] -}}
                     <span class="diff-highlight">{{- line[start:end] -}}</span>
-                    {%- set last_pos = end -%}
+                    {%- set ns.last_pos = end -%}
                   {%- endfor -%}
-                  {{- line[last_pos:] -}}
+                  {{- line[ns.last_pos:] -}}
                 </div>
               {% else %}
                 <div class="text-line"> </div>

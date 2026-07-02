@@ -2,10 +2,17 @@ from flask import Flask, request, render_template
 import requests
 from bs4 import BeautifulSoup
 import difflib
+import os
+import re
+import nh3
 from database import init_db, store_comparison, get_recent_comparisons, get_comparison
 from crawler import WebCrawler
 from urllib.parse import urlparse  # Make sure urlparse is imported
-from http_session_manager import fetch_with_session, close_all_sessions
+from http_session_manager import (
+    fetch_with_session,
+    close_all_sessions,
+    UnsafeURLError,
+)
 
 
 app = Flask(__name__)
@@ -59,9 +66,10 @@ def crawl():
                 crawler = WebCrawler(home_url)
                 results = crawler.crawl(max_pages=5000)
             except ValueError as ve:
-                print(f"Initialization Error: {ve}")
+                # Covers invalid and disallowed (UnsafeURLError) home URLs.
+                error = f"Invalid or disallowed URL: {ve}"
             except Exception as e:
-                print(f"An error occurred during crawling: {e}")
+                error = f"An error occurred during crawling: {e}"
             finally:
                 if crawler:
                     crawler.close_session()  # Ensure session is closed
@@ -81,10 +89,31 @@ def fetch_images(soup, base_url):
     return image_links
 
 
+def sanitize_html(html):
+    """
+    Sanitize remote HTML before it is rendered with |safe. Strips scripts,
+    event handlers, and other active content so a compared site cannot run
+    JavaScript in this app's origin (stored XSS). Structural markup is kept so
+    the visual comparison is still meaningful.
+    """
+    return nh3.clean(html)
+
+
+def sanitize_css(css):
+    """
+    Neutralize a remote stylesheet before it is emitted inside a <style> block.
+    The only structural escape from a <style> element is a closing tag, so
+    breaking up any '</style' sequence prevents HTML/script injection.
+    """
+    return re.sub(r"</\s*style", "<\\/style", css, flags=re.IGNORECASE)
+
+
 def fetch_and_parse(url):
     try:
         response = fetch_with_session(url, method="GET")
         return BeautifulSoup(response.text, "html.parser")
+    except UnsafeURLError as e:
+        return f"URL not allowed: {e}"
     except requests.RequestException as e:
         return f"Error fetching the URL: {e}"
 
@@ -99,8 +128,8 @@ def fetch_css(soup, base_url):
                 href = requests.compat.urljoin(base_url, href)
             try:
                 css_response = fetch_with_session(href, method="GET")
-                css_links.append(css_response.text)
-            except requests.RequestException:
+                css_links.append(sanitize_css(css_response.text))
+            except (requests.RequestException, UnsafeURLError):
                 broken_links.append(href)
     return css_links, broken_links
 
@@ -254,7 +283,7 @@ def index():
 
         soup1 = fetch_and_parse(url1)
         if isinstance(soup1, BeautifulSoup):
-            content1 = soup1.prettify()
+            content1 = sanitize_html(soup1.prettify())
             css1, broken_links1 = fetch_css(soup1, url1)
             images1 = fetch_images(soup1, url1)
             results1 = list_items(soup1)
@@ -265,7 +294,7 @@ def index():
 
         soup2 = fetch_and_parse(url2)
         if isinstance(soup2, BeautifulSoup):
-            content2 = soup2.prettify()
+            content2 = sanitize_html(soup2.prettify())
             css2, broken_links2 = fetch_css(soup2, url2)
             images2 = fetch_images(soup2, url2)
             results2 = list_items(soup2)
@@ -347,8 +376,11 @@ def view_comparison(comparison_id):
 
 
 if __name__ == "__main__":
+    # Debug mode exposes the Werkzeug interactive debugger (RCE if reachable).
+    # Off by default; opt in explicitly for local development.
+    debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
     try:
-        app.run(host="localhost", port=3000, debug=True)
+        app.run(host="localhost", port=3000, debug=debug)
     finally:
         # Clean up sessions when the app shuts down
         close_all_sessions()

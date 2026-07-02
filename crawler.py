@@ -2,9 +2,12 @@ import requests
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup, Tag  # Import Tag
 from collections import deque  # Use deque for efficient queue operations
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import csv
 import os
 from datetime import datetime
+
+from http_session_manager import assert_safe_url, UnsafeURLError
 
 # Optional: For robots.txt parsing
 # from urllib.robotparser import RobotFileParser
@@ -16,6 +19,8 @@ class WebCrawler:
         parsed_home = urlparse(home_url)
         if not parsed_home.scheme or not parsed_home.netloc:
             raise ValueError("Invalid home URL provided.")
+        # Reject internal/metadata targets up front (raises UnsafeURLError).
+        assert_safe_url(home_url)
         self.home_url = home_url
         self.home_domain = parsed_home.netloc
 
@@ -76,28 +81,18 @@ class WebCrawler:
 
     def _check_accessibility(self, url):
         """
-        Checks if a URL is accessible using a HEAD request.
+        Checks if a single URL is accessible using a HEAD request.
         Returns True if accessible (status 2xx), False otherwise.
         Handles common request exceptions.
-        Updates accessibility in self.link_details if entry exists.
         """
-        # Check if accessibility info already exists for this URL
-        # Use .get() with a default to avoid KeyError if 'accessible' is missing
-        if (
-            url in self.link_details
-            and self.link_details[url].get("accessible") is not None
-        ):
-            return self.link_details[url]["accessible"]
-
-        accessible = False  # Default assumption
         try:
+            assert_safe_url(url)
             # Use the session for the HEAD request too
             head_response = self.session.head(url, timeout=5, allow_redirects=True)
             # Consider any 2xx status code as accessible
-            accessible = (
-                head_response.status_code >= 200 and head_response.status_code < 300
-            )
-        # Catch more specific exceptions
+            return 200 <= head_response.status_code < 300
+        except UnsafeURLError:
+            print(f"Skipping accessibility check for disallowed URL {url}")
         except requests.exceptions.Timeout:
             print(f"Accessibility check timed out for {url}")
         except requests.exceptions.ConnectionError:
@@ -106,17 +101,33 @@ class WebCrawler:
             print(f"Accessibility check error for {url}: {e}")
         except Exception as e:  # Catch unexpected errors during HEAD request
             print(f"Unexpected error during accessibility check for {url}: {e}")
+        return False
 
-        # --- MODIFICATION ---
-        # Update the accessibility status *only if* the link detail entry already exists.
-        # Let _crawl_page be responsible for creating the initial entry.
-        if url in self.link_details:
-            self.link_details[url]["accessible"] = accessible
-        # --- END MODIFICATION ---
+    def _check_all_accessibility(self, max_workers=20):
+        """
+        Check accessibility for every discovered URL in parallel, one HEAD
+        request per unique URL. Runs after the crawl so the crawl loop itself
+        stays fast and never re-checks a URL seen on multiple pages.
+        """
+        urls = [
+            url
+            for url, detail in self.link_details.items()
+            if detail.get("accessible") is None
+        ]
+        if not urls:
+            return
 
-        # Return the determined status, whether updated or not.
-        # _crawl_page will use this return value when creating the entry if needed.
-        return accessible
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_url = {
+                executor.submit(self._check_accessibility, url): url for url in urls
+            }
+            for future in as_completed(future_to_url):
+                url = future_to_url[future]
+                try:
+                    self.link_details[url]["accessible"] = future.result()
+                except Exception as e:
+                    print(f"Unexpected error during accessibility check for {url}: {e}")
+                    self.link_details[url]["accessible"] = False
 
     def _crawl_page(self, url):
         """Crawls a single page, extracts links and their details, and adds them to sets/queue."""
@@ -129,6 +140,7 @@ class WebCrawler:
         # --- End optional ---
 
         try:
+            assert_safe_url(url)
             response = self.session.get(url, timeout=10)
             response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
 
@@ -159,19 +171,15 @@ class WebCrawler:
                 attributes = self._get_all_attributes(a_tag)
                 link_text = a_tag.get_text(strip=True)
 
-                # --- Accessibility Check ---
-                # Decide if/when to check. Checking here is simpler but slower.
-                # Consider checking only external links or doing it post-crawl.
-                is_accessible = self._check_accessibility(
-                    absolute_url
-                )  # Check accessibility
-
-                # Store details aggregated by absolute_url
+                # Store details aggregated by absolute_url. Accessibility is
+                # deferred to a single parallel pass after the crawl (see
+                # _check_all_accessibility) so we issue one HEAD per unique URL
+                # instead of one per occurrence inline in this loop.
                 if absolute_url not in self.link_details:
                     self.link_details[absolute_url] = {
                         "url": absolute_url,  # Store the URL itself for easy access
                         "is_internal": self._is_internal_link(absolute_url),
-                        "accessible": is_accessible,  # Store accessibility status
+                        "accessible": None,  # Filled in by the post-crawl pass
                         "sources": [],  # List of (source_page, link_text, attributes) tuples
                     }
                 # Add occurrence details (page found on, text, specific attributes)
@@ -217,6 +225,9 @@ class WebCrawler:
             # time.sleep(0.1)
 
         print(f"Crawl finished. Crawled {pages_crawled} pages.")
+
+        # Check accessibility of all discovered links in one parallel pass.
+        self._check_all_accessibility()
 
         # Prepare results: Separate internal/external link details
         results = {"internal": [], "external": []}

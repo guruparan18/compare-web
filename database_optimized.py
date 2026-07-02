@@ -57,6 +57,12 @@ class DatabaseConnectionPool:
         finally:
             cursor.close()
 
+    def close_thread_connection(self):
+        """Close the calling thread's connection, if any."""
+        if getattr(self._local, "connection", None) is not None:
+            self._local.connection.close()
+            self._local.connection = None
+
     def close_all_connections(self):
         """Close all connections in the pool."""
         with self._lock:
@@ -64,14 +70,16 @@ class DatabaseConnectionPool:
                 conn.close()
             self._connections.clear()
 
-            # Close thread-local connection if it exists
-            if hasattr(self._local, "connection") and self._local.connection:
-                self._local.connection.close()
-                self._local.connection = None
+        # Close thread-local connection if it exists
+        self.close_thread_connection()
 
 
 # Global connection pool
 _db_pool = DatabaseConnectionPool()
+
+# Single shared executor for async writes. Creating one per call leaks a worker
+# thread (and its thread-local SQLite connection) on every request.
+_store_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="db-store")
 
 
 def get_db_pool() -> DatabaseConnectionPool:
@@ -264,8 +272,8 @@ def store_comparison_optimized(
                 "url2": data["url2"],
                 "content1": data["content1"],
                 "content2": data["content2"],
-                "css1": json.dumps(data["css1"]) if data.get("css1") else None,
-                "css2": json.dumps(data["css2"]) if data.get("css2") else None,
+                "css1": json.dumps(data.get("css1", [])),
+                "css2": json.dumps(data.get("css2", [])),
                 "comparison": json.dumps(data["comparison"])
                 if data.get("comparison")
                 else None,
@@ -325,11 +333,21 @@ def store_comparison_optimized(
             )
             return comparison_id
 
+    def _store_sync_async():
+        # Runs on a shared executor thread. Ensure the thread-local connection
+        # opened by _db_pool.get_connection() is closed so the thread doesn't
+        # leak an open WAL connection, and log failures the caller can't see.
+        try:
+            _store_sync()
+        except Exception:
+            logger.exception("Async comparison store failed")
+        finally:
+            _db_pool.close_thread_connection()
+
     if async_mode:
-        # Store asynchronously to not block the main thread
-        executor = ThreadPoolExecutor(max_workers=2)
-        executor.submit(_store_sync)
-        # Return immediately, don't wait for completion
+        # Store on the shared executor to not block the request thread.
+        _store_executor.submit(_store_sync_async)
+        # Return immediately, don't wait for completion.
         return None
     else:
         return _store_sync()
@@ -405,32 +423,45 @@ def get_comparison_optimized(
         if result:
             data = dict(result)
 
-            # Deserialize JSON strings back to Python objects
-            json_fields = [
+            # Deserialize JSON strings back to Python objects. Map each field to
+            # the empty container the template expects so NULL/missing/corrupt
+            # values don't crash iteration (e.g. `{% for css in css1 %}`).
+            list_fields = [
                 "css1",
                 "css2",
-                "comparison",
                 "broken_links1",
                 "broken_links2",
                 "images1",
                 "images2",
-                "results1",
-                "results2",
                 "links1",
                 "links2",
-                "links_comparison",
                 "text_comparison",
             ]
+            dict_fields = ["results1", "results2", "links_comparison"]
 
-            for field in json_fields:
-                if data.get(field):
+            for field in list_fields + dict_fields:
+                default = [] if field in list_fields else {}
+                raw = data.get(field)
+                if raw:
                     try:
-                        data[field] = json.loads(data[field])
+                        data[field] = json.loads(raw)
                     except json.JSONDecodeError:
                         logger.warning(
                             f"Failed to parse JSON field {field} for comparison {comparison_id}"
                         )
-                        data[field] = None
+                        data[field] = default
+                else:
+                    data[field] = default
+
+            # `comparison` is consumed by JS via tojson, where None is fine.
+            if data.get("comparison"):
+                try:
+                    data["comparison"] = json.loads(data["comparison"])
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"Failed to parse JSON field comparison for comparison {comparison_id}"
+                    )
+                    data["comparison"] = None
 
             return data
 
